@@ -40,8 +40,10 @@ def patch_sysctl_printk():
             raise EscalationNecessaryError(f"Need root permissions to disable logging. Use sudo.")
         with open("/etc/sysctl.d/00_silver-tuning_printk.conf", "w") as f:
             f.write("kernel.printk = 2 2 1 2\n")
+        return True
     else:
         print("  No patching needed")
+        return False
 
 
 # GRUB_CMDLINE_LINUX_DEFAULT="quiet loglevel=3 splash vt.global_cursor_default=0"
@@ -140,6 +142,28 @@ def patch_grub():
                 else:
                     f.write(f'{GRUB_CMDLINE_LINUX_DEFAULT}="{cmdline_linux_default_options}"\n')
 
+        print()
+        print("* Grub configuration changed. Running update-grub...")
+        ug = subprocess.Popen(['/sbin/update-grub'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        while ug.poll() is None:
+            out_line = ug.stdout.readline().decode("utf-8")
+            if out_line:
+                print(f"  O: {out_line.rstrip()}")
+            err_line = ug.stderr.readline().decode("utf-8")
+            if err_line:
+                print(f"  E: {err_line.rstrip()}")
+
+        returncode = ug.wait()
+        if returncode == 0:
+            print("  update-grub finished successfully")
+        else:
+            print(f"Error! update-grub returned {returncode}", file=sys.stderr)
+            return returncode
+        
+        return True
+    else:
+        return False
+
 
 def main():
     if not is_trixie():
@@ -149,13 +173,20 @@ def main():
     print("The OS is Debian Trixie.")
     print()
 
+    patched = False
     try:
-        patch_sysctl_printk()
-        patch_grub()
+        patched |= patch_sysctl_printk()
+        patched |= patch_grub()
     except Exception as e:
         print(f"Error occurred: {e}", file=sys.stderr)
         print("Halting", file=sys.stderr)
         return UNKNOWN_ERROR
+
+    print()
+    if patched:
+        print("All done. Reboot the system to apply all the changes.")
+    else:
+        print("No changes made")
 
     return SUCCESS
 
