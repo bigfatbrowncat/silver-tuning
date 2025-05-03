@@ -3,19 +3,13 @@
 # This script is designed to enable plymouth and disable log messages during the boot of Debian Trixie
 # It should be run on a clean system right after the installation finished
 
-import re
-import subprocess
 import sys
-from typing import List
+import getpass
 
 from common import *
 from common.run_app import run_app
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-
-#apt install docker.io docker-cli docker-compose
-
-
 
 def check_package_installed(name: str):
     print(f"* Checking if package installed: {name}")
@@ -56,8 +50,8 @@ def install_docker():
         return False
 
     print(f"* Installing docker packages: {', '.join(inst_list)}")
-    # if not is_root():
-    #     raise EscalationNecessaryError("Root privileges needed to install packages")
+    if not is_root():
+        raise EscalationNecessaryError("Root privileges needed to install packages")
 
     ret = run_app(['/usr/bin/apt', "install", "-y"] + inst_list)
 
@@ -66,6 +60,37 @@ def install_docker():
 
     return True
 
+def assure_docker_group():
+    if "SUDO_USER" in os.environ:
+        user = os.environ["SUDO_USER"]
+    else:
+        user = getpass.getuser()
+
+    print(f"* Checking if the current user {user} is in the \"docker\" group")
+
+    is_in_docker = False
+    def groups_out(out_line: str):
+        out_line = out_line.split(':')[1].strip()
+        nonlocal is_in_docker
+        if 'docker' in out_line.split():
+            is_in_docker = True
+
+
+    result = run_app(['/usr/bin/groups', user], process_out_line=groups_out, print_out=False)
+    if result != 0:
+        raise RuntimeError(f"docker failed with result {result}")
+
+    #SUDO_USER = il
+
+    if not is_in_docker:
+        print(f"* Adding the current user {user} to the docker group")
+        result = run_app(['/sbin/usermod', '-aG', 'docker', user])
+        if result != 0:
+            raise RuntimeError(f"usermod failed with result {result}")
+        return True
+    else:
+        print("  The current user is already in the \"docker\" group")
+        return False
 
 def main():
     if not is_trixie():
@@ -78,6 +103,7 @@ def main():
     patched = False
     try:
         patched = install_docker()
+        patched |= assure_docker_group()
     except Exception as e:
         print(f"Error occurred: {e}", file=sys.stderr)
         print("Halting", file=sys.stderr)
@@ -93,7 +119,4 @@ def main():
 
 
 if __name__ == "__main__":
-
-    #run_app(['/usr/bin/python3', 'test-app.py'])
-
     exit(main())
