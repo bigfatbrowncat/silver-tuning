@@ -3,12 +3,11 @@
 # This script is designed to enable plymouth and disable log messages during the boot of Debian Trixie
 # It should be run on a clean system right after the installation finished
 
-import os.path
-import shutil
 import re
 import subprocess
 import sys
 from common import *
+from common.run_app import run_app
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 
@@ -144,16 +143,7 @@ def patch_grub():
 
         print()
         print("* Grub configuration changed. Running update-grub...")
-        ug = subprocess.Popen(['/sbin/update-grub'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        while ug.poll() is None:
-            out_line = ug.stdout.readline().decode("utf-8")
-            if out_line:
-                print(f"  O: {out_line.rstrip()}")
-            err_line = ug.stderr.readline().decode("utf-8")
-            if err_line:
-                print(f"  E: {err_line.rstrip()}")
-
-        returncode = ug.wait()
+        returncode = run_app(['/sbin/update-grub'])
         if returncode == 0:
             print("  update-grub finished successfully")
         else:
